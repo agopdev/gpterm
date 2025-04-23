@@ -23,6 +23,11 @@ Version: '$GPTERM_VERSION'
 
 By: Alonso González-Leal @agopdev
 
+Usage: []
+
+Commands:
+
+
 
   "
 }
@@ -62,6 +67,30 @@ call_api() {
         }')" > "${FILE_RESPONSE_PATH}/${FILENAME_RESPONSE}"
 }
 
+set_api_key() {
+  echo "My API Key $1"
+}
+
+show_config() {
+  echo "Show config"
+}
+
+list_chats() {
+  echo "List chats"
+}
+
+list_models() {
+  echo "List models"
+}
+
+change_model() {
+  echo "Change model $1"
+}
+
+change_chat() {
+  echo "Change chat $1"
+}
+
 
 # Inputs
 case $1 in
@@ -72,8 +101,33 @@ case $1 in
     print_help
     ;;
   --prompt|-p)
-    send_prompt "'$2'"
+    send_prompt "$2"
     print_prompt
+    ;;
+  --api-key)
+    set_api_key "$2"
+    ;;
+  config)
+    show_config
+    ;;
+  chat)
+    list_chats
+    ;;
+  model)
+    list_models
+    ;;
+  switch)
+    case $2 in
+      --chat|-c)
+        change_chat "$3"
+        ;;
+      --model|-m)
+        change_model "$3"
+        ;;
+      *)
+      echo "Unrecognized option: '$2'"
+      ;;
+    esac
     ;;
   *)
     echo "Unrecognized option: '$1'"
