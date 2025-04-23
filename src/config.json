@@ -1,0 +1,7 @@
+{
+  "config": {
+    "API_KEY": "",
+    "ModelSelected": "gpt-4o",
+    "ChatSelected": ""
+  }
+}
