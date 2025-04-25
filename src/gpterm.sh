@@ -37,10 +37,24 @@ Commands:
   "
 }
 
+# Utils
+is_empty() {
+  local input="$1"
+
+  trimmed=$(echo "$input" | xargs)
+
+  if [[ -z "$trimmed" ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Functionality
 save_history() {
   local role="$1"
   local message="$2"
-  local chat_name=$(get_selected_chat)
+  local chat_name=$(get_chat_selected)
   local history_file="${CHATS_PATH}/${chat_name}/history.json"
   local tmp_file=$(mktemp)
 
@@ -48,10 +62,10 @@ save_history() {
     echo "[]" > "$history_file"
   fi
 
-  jq '. += [{"role": "'"$role"'", "content": "'"$message"'"}]' "$history_file" > "$tmp_file" && mv "$tmp_file" "$history_file"
+  jq --arg role "$role" --arg content "$message" \
+     '. += [{"role": $role, "content": $content}]' \
+     "$history_file" > "$tmp_file" && mv "$tmp_file" "$history_file"
 }
-
-
 
 edit_config_json() {
   local key="$1"
@@ -81,6 +95,8 @@ print_prompt() {
 
   save_history "assistant" "$response"
 
+  echo ""
+
   for i in $(seq $response_size); do
     printf "%s" "${response:$i-1:1}"
     sleep 0.01
@@ -90,15 +106,18 @@ print_prompt() {
 }
 
 call_api() {
-  curl -sS "https://api.openai.com/v1/chat/completions" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $(get_api_key)" \
-    -d "$(jq -n --arg prompt "$1" '{
-          model: "gpt-4o",
-          messages: [
-            { role: "user", content: $prompt }
-          ]
-        }')" > "${RESPONSE_FILE_PATH}/${FILENAME_RESPONSE}"
+  local actual_chat=$(get_chat_selected)
+  local chat_history_file="${CHATS_PATH}/${actual_chat}/history.json"
+  local model_selected=$(get_model_selected)
+
+  jq -n --arg model "$model_selected" --slurpfile messages "$chat_history_file" \
+    '{
+      model: $model,
+      messages: $messages[0]
+    }' | curl -sS "https://api.openai.com/v1/chat/completions" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $(get_api_key)" \
+      -d @- > "${RESPONSE_FILE_PATH}/${FILENAME_RESPONSE}"
 }
 
 set_api_key() {
@@ -109,16 +128,16 @@ get_api_key() {
   jq -r '.config.API_KEY' "${CONFIG_FILE_PATH}/${FILENAME_CONFIG}"
 }
 
-get_selected_chat() {
+get_chat_selected() {
   jq -r '.config.ChatSelected' "${CONFIG_FILE_PATH}/${FILENAME_CONFIG}"
 }
 
-get_selected_model() {
+get_model_selected() {
   jq -r '.config.ModelSelected' "${CONFIG_FILE_PATH}/${FILENAME_CONFIG}"
 }
 
 get_actual_chat_path() {
-  local selected_chat="$(get_selected_chat)"
+  local selected_chat="$(get_chat_selected)"
   
   printf "%s\n" "${CHATS_PATH}/${selected_chat}"
 }
@@ -128,8 +147,8 @@ is_api_key_defined() {
 }
 
 show_config() {
-  echo "Actual chat: $(get_selected_chat)"
-  echo "Model selected: $(get_selected_model)"
+  echo "Actual chat: $(get_chat_selected)"
+  echo "Model selected: $(get_model_selected)"
   echo "Api key defined: $(is_api_key_defined)"
 }
 
@@ -140,8 +159,13 @@ get_chats() {
 }
 
 list_chats() {
-  local selected_chat=$(get_selected_chat)
+  local selected_chat=$(get_chat_selected)
   mapfile -t chat_dirs < <(get_chats)
+
+  if [ ${#chat_dirs[@]} -eq 0 ]; then
+    echo "No chats found"
+    exit 0
+  fi
 
   for chat in "${chat_dirs[@]}"; do
     if [[ "$chat" == "$selected_chat" ]]; then
@@ -153,7 +177,7 @@ list_chats() {
 }
 
 list_models() {
-  local selected_model=$(get_selected_model)
+  local selected_model=$(get_model_selected)
 
   for model in "${MODELS[@]}"; do
     if [[ "$model" == "$selected_model" ]]; then
@@ -183,10 +207,31 @@ change_model() {
   fi
 }
 
+is_chat_selected() {
+  local chat_selected=$(get_chat_selected)
+
+  if is_empty "$chat_selected"; then
+    echo "No chat selected"
+    return 1
+  fi
+
+  return 0
+}
+
+delete_selected_chat() {
+  edit_config_json ".config.ChatSelected" ""
+  echo "No chat selected"
+}
+
 change_chat() {
   local chat_to_set="$1"
   local is_new_chat=true
   mapfile -t chat_dirs < <(get_chats)
+
+  if is_empty "$chat_to_set"; then
+    echo "Please enter a valid name"
+    exit 1
+  fi
 
   for chat in "${chat_dirs[@]}"; do
     if [[ "$chat" == "$chat_to_set" ]]; then
@@ -199,10 +244,39 @@ change_chat() {
 
   if [ "$is_new_chat" = true ]; then
     mkdir -p "${CHATS_PATH}/$chat_to_set"
-    echo "[]" > "${CHATS_PATH}/${chat_to_set}/${chat_to_set}_history.json"
-    echo "Switched to a new chat"
+    echo "[]" > "${CHATS_PATH}/${chat_to_set}/history.json"
+    echo "Switched to a new chat: '$chat_to_set'"
   else
-    echo "Switched to: '$chat_to_set' chat"
+    echo "Switched to chat: '$chat_to_set'"
+  fi
+}
+
+delete_chat() {
+  local chat_exists=false
+  local chat_to_delete="$1"
+  mapfile -t chat_dirs < <(get_chats)
+
+  for chat in "${chat_dirs[@]}"; do
+    if [[ "$chat" == "$chat_to_delete" ]]; then
+      chat_exists=true
+      break;
+    fi
+  done
+
+  if [ "$chat_exists" = false ]; then
+    echo "Chat '$chat_to_delete' not found"
+    exit 0
+  fi
+  
+  read -p "Are you sure to delete chat: '$chat_to_delete'? [y/N] " confirm
+
+  if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+    rm -rf "${CHATS_PATH}/${chat_to_delete}"
+    echo "Chat '$chat_to_delete' deleted successfully"
+    delete_selected_chat
+  else
+    echo "Operation cancelled."
+    exit 1
   fi
 }
 
@@ -216,8 +290,11 @@ case $1 in
     print_help
     ;;
   --prompt|-p)
-    send_prompt "$2"
-    print_prompt
+    if is_chat_selected; then
+      send_prompt "$2"
+      print_prompt
+      exit 0
+    fi
     ;;
   config)
     case $2 in
@@ -233,7 +310,17 @@ case $1 in
     esac
     ;;
   chat)
-    list_chats
+    case $2 in
+      '')
+        list_chats
+        ;;
+      --delete|-d)
+        delete_chat "$3"
+        ;;
+      *)
+      echo "Unrecognized option '$2'"
+      ;;
+    esac
     ;;
   model)
     list_models
