@@ -37,12 +37,39 @@ Commands:
   "
 }
 
+save_history() {
+  local role="$1"
+  local message="$2"
+  local chat_name=$(get_selected_chat)
+  local history_file="${CHATS_PATH}/${chat_name}/history.json"
+  local tmp_file=$(mktemp)
+
+  if [ ! -f "$history_file" ]; then
+    echo "[]" > "$history_file"
+  fi
+
+  jq '. += [{"role": "'"$role"'", "content": "'"$message"'"}]' "$history_file" > "$tmp_file" && mv "$tmp_file" "$history_file"
+}
+
+
+
+edit_config_json() {
+  local key="$1"
+  local value="$2"
+
+  jq --arg val "$value" "$key = \$val" \
+    "${CONFIG_FILE_PATH}/${FILENAME_CONFIG}" > /tmp/config.json && \
+    mv /tmp/config.json "${CONFIG_FILE_PATH}/${FILENAME_CONFIG}"
+}
+
 send_prompt() {
   
   if [ -z "$1" ]; then
       echo "Error: You should write a prompt."
       exit 1
   fi
+
+  save_history "user" "$1"
 
   call_api "$1"
 }
@@ -51,6 +78,8 @@ send_prompt() {
 print_prompt() {
   local response=$(jq -r '.choices[0].message.content' "${RESPONSE_FILE_PATH}/${FILENAME_RESPONSE}")
   local response_size=${#response}
+
+  save_history "assistant" "$response"
 
   for i in $(seq $response_size); do
     printf "%s" "${response:$i-1:1}"
@@ -64,23 +93,13 @@ call_api() {
   curl -sS "https://api.openai.com/v1/chat/completions" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $(get_api_key)" \
-    -d "$(jq -n --arg prompt "'$1'" '{
+    -d "$(jq -n --arg prompt "$1" '{
           model: "gpt-4o",
           messages: [
             { role: "user", content: $prompt }
           ]
         }')" > "${RESPONSE_FILE_PATH}/${FILENAME_RESPONSE}"
 }
-
-edit_config_json() {
-  local key="$1"
-  local value="$2"
-
-  jq --arg val "$value" "$key = \$val" \
-    "${CONFIG_FILE_PATH}/${FILENAME_CONFIG}" > /tmp/config.json && \
-    mv /tmp/config.json "${CONFIG_FILE_PATH}/${FILENAME_CONFIG}"
-}
-
 
 set_api_key() {
   edit_config_json ".config.API_KEY" "$1"
@@ -180,6 +199,7 @@ change_chat() {
 
   if [ "$is_new_chat" = true ]; then
     mkdir -p "${CHATS_PATH}/$chat_to_set"
+    echo "[]" > "${CHATS_PATH}/${chat_to_set}/${chat_to_set}_history.json"
     echo "Switched to a new chat"
   else
     echo "Switched to: '$chat_to_set' chat"
