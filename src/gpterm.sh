@@ -1,4 +1,4 @@
-#/bin/bash
+#!/usr/bin/env bash
 
 export GPTERM_VERSION="0.1.0"
 export CONFIG_FILE_PATH=""
@@ -28,12 +28,35 @@ Version: '$GPTERM_VERSION'
 
 By: Alonso González-Leal @agopdev
 
-Usage: []
+Usage: gpterm [<command>|<global option>] [<command option>|<user input>] [<user input>]
 
 Commands:
+  chat                  List all chats.
+  config                Allows gpterm customizations. See config options for more details.
+  model                 List all available models.
+  switch                Allows chat or model switching. See switch options for more details.
 
+Global options:
+  --version, -v         Prints gpterm version.
+  --help, -h            Prints this screen.
+  --prompt, -p          Send a prompt to OpenAI. Ej.: gpterm -p 'Hi!'.
 
+Commands options:
 
+  Config options:
+    --list, -l          Prints gpterm config parameters.
+    --api-key, -A       Set API KEY for API calls. Ej.: gpterm config --api-key 'XXXXXX'
+
+  Chat options:
+    --list, -l          Prints all created chats.
+    --delete, -d        Delete an existing chat. Ej.: gpterm chat -d 'MyChat'
+
+  Model options:
+    --list, -l          Prints all available models.
+
+  Switch options:
+    --chat, -c          Allows chat switching
+    --model, -m         Allows model switching
   "
 }
 
@@ -301,29 +324,36 @@ case $1 in
       --list|-l)
         show_config
         ;;
-      --api-key)
+      --api-key|-A)
         set_api_key "$3"
         ;;
       *)
-      echo "Unrecognized option: '$2'"
-      ;;
+        echo "Unrecognized option: '$2'"
+        ;;
     esac
     ;;
   chat)
     case $2 in
-      '')
+      --list|-l)
         list_chats
         ;;
       --delete|-d)
         delete_chat "$3"
         ;;
       *)
-      echo "Unrecognized option '$2'"
-      ;;
+        echo "Unrecognized option '$2'"
+        ;;
     esac
     ;;
   model)
-    list_models
+    case $2 in
+      --list|-l)
+        list_models
+        ;;
+      *)
+        echo "Unrecognized option '$2'"
+        ;;
+    esac
     ;;
   switch)
     case $2 in
@@ -337,6 +367,9 @@ case $1 in
       echo "Unrecognized option: '$2'"
       ;;
     esac
+    ;;
+  '')
+    print_help
     ;;
   *)
     echo "Unrecognized option: '$1'"
