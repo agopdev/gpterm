@@ -2,6 +2,7 @@
   "config": {
     "API_KEY": "",
     "ModelSelected": "gpt-4o",
-    "ChatSelected": ""
+    "ChatSelected": "",
+    "OutputSpeedDivisor": 1
   }
 }

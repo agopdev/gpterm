@@ -46,6 +46,7 @@ Commands options:
   Config options:
     --list, -l          Prints gpterm config parameters.
     --api-key, -A       Set API KEY for API calls. Ej.: gpterm config --api-key 'XXXXXX'
+    --output-speed, -M  Set the numerical value for the divisor of the speed for the prompt output. Value 0 will disable this function. Ej.: gpterm config -M 2
 
   Chat options:
     --list, -l          Prints all created chats.
@@ -115,17 +116,23 @@ send_prompt() {
 print_prompt() {
   local response=$(jq -r '.choices[0].message.content' "${RESPONSE_FILE_PATH}/${FILENAME_RESPONSE}")
   local response_size=${#response}
+  local output_speed_divisor=$(get_output_speed_divisor)
+  local speed_base="0.0009"
+  local output_speed=$(bc -l <<<"${speed_base}/${output_speed_divisor}")
 
   save_history "assistant" "$response"
 
-  echo ""
+  printf "\n\n"
 
   for i in $(seq $response_size); do
     printf "%s" "${response:$i-1:1}"
-    sleep 0.01
+
+    if (( $(echo "$output_speed_divisor > 0" | bc -l) )); then
+      sleep $output_speed
+    fi
   done
 
-  echo ""
+  printf "\n\n"
 }
 
 call_api() {
@@ -147,6 +154,11 @@ set_api_key() {
   edit_config_json ".config.API_KEY" "$1"
 }
 
+set_output_speed_divisor() {
+  edit_config_json ".config.OutputSpeedDivisor" "$1"
+  echo "Output speed divisor set to $1"
+}
+
 get_api_key() {
   jq -r '.config.API_KEY' "${CONFIG_FILE_PATH}/${FILENAME_CONFIG}"
 }
@@ -157,6 +169,10 @@ get_chat_selected() {
 
 get_model_selected() {
   jq -r '.config.ModelSelected' "${CONFIG_FILE_PATH}/${FILENAME_CONFIG}"
+}
+
+get_output_speed_divisor() {
+  jq -r '.config.OutputSpeedDivisor' "${CONFIG_FILE_PATH}/${FILENAME_CONFIG}"
 }
 
 get_actual_chat_path() {
@@ -173,6 +189,7 @@ show_config() {
   echo "Actual chat: $(get_chat_selected)"
   echo "Model selected: $(get_model_selected)"
   echo "Api key defined: $(is_api_key_defined)"
+  echo "Output speed divisor: $(get_output_speed_divisor)"
 }
 
 get_chats() {
@@ -326,6 +343,9 @@ case $1 in
         ;;
       --api-key|-A)
         set_api_key "$3"
+        ;;
+      --output-speed|-M)
+        set_output_speed_divisor "$3"
         ;;
       *)
         echo "Unrecognized option: '$2'"
